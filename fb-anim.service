@@ -1,0 +1,12 @@
+[Unit]
+Description=Framebuffer Boot Animation
+# Run after standard boot processes and ensure fbcp is running first
+After=multi-user.target fbcp.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/fb_anim
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
