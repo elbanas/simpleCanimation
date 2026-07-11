@@ -6,6 +6,7 @@
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 #include <stdint.h>
+#include "logo.h"
 
 int main() {
     int fbfd = 0;
@@ -14,55 +15,61 @@ int main() {
     long int screensize = 0;
     char *fbp = 0;
 
-    // Open the primary framebuffer
     fbfd = open("/dev/fb0", O_RDWR);
     if (fbfd == -1) return 1;
 
-    // Get fixed and variable screen information
     ioctl(fbfd, FBIOGET_FSCREENINFO, &finfo);
     ioctl(fbfd, FBIOGET_VSCREENINFO, &vinfo);
 
-    // Calculate memory size (width * height * bytes per pixel)
     screensize = vinfo.yres_virtual * finfo.line_length;
-
-    // Map framebuffer to memory
     fbp = (char *)mmap(0, screensize, PROT_READ | PROT_WRITE, MAP_SHARED, fbfd, 0);
     if ((intptr_t)fbp == -1) return 1;
 
-    int x = 0, y = 0;
-    int dx = 5, dy = 5;
-    int box_size = 50;
-
-    // Animation Loop
-    while (1) {
-        // Clear screen (paint it black)
-        for (int i = 0; i < screensize; i++) fbp[i] = 0x00;
-
-        // Draw the bouncing box
-        for (int cy = y; cy < y + box_size; cy++) {
-            for (int cx = x; cx < x + box_size; cx++) {
-                long int location = (cx + vinfo.xoffset) * (vinfo.bits_per_pixel / 8) +
-                                    (cy + vinfo.yoffset) * finfo.line_length;
-
-                // Write a solid color (e.g., cyan)
-                if (vinfo.bits_per_pixel == 32) {
-                    *((uint32_t*)(fbp + location)) = 0x00FFFF; // ARGB
-                } else if (vinfo.bits_per_pixel == 16) {
-                    *((uint16_t*)(fbp + location)) = 0x07FF;   // RGB565
-                }
+    // 1. Paint the entire background white
+    for (int y = 0; y < vinfo.yres; y++) {
+        for (int x = 0; x < vinfo.xres; x++) {
+            long int loc = (x + vinfo.xoffset) * (vinfo.bits_per_pixel / 8) + (y + vinfo.yoffset) * finfo.line_length;
+            if (vinfo.bits_per_pixel == 32) {
+                *((uint32_t*)(fbp + loc)) = 0xFFFFFFFF; // White
+            } else if (vinfo.bits_per_pixel == 16) {
+                *((uint16_t*)(fbp + loc)) = 0xFFFF;     // White
             }
         }
+    }
 
-        // Update position
-        x += dx;
-        y += dy;
+    // 2. Calculate center coordinates
+    int start_x = (vinfo.xres - LOGO_WIDTH) / 2;
+    int start_y = (vinfo.yres - LOGO_HEIGHT) / 2;
+    int i = 0;
 
-        // Bounce off edges
-        if (x < 0 || x > vinfo.xres - box_size) dx = -dx;
-        if (y < 0 || y > vinfo.yres - box_size) dy = -dy;
+    // 3. Draw the logo
+    for (int y = 0; y < LOGO_HEIGHT; y++) {
+        for (int x = 0; x < LOGO_WIDTH; x++) {
+            int cx = start_x + x;
+            int cy = start_y + y;
 
-        // Sleep for ~16ms (~60 FPS)
-        usleep(16000);
+            // Prevent drawing outside screen boundaries
+            if (cx >= 0 && cx < vinfo.xres && cy >= 0 && cy < vinfo.yres) {
+                long int loc = (cx + vinfo.xoffset) * (vinfo.bits_per_pixel / 8) + (cy + vinfo.yoffset) * finfo.line_length;
+                uint32_t p = logo_pixels[i];
+
+                if (vinfo.bits_per_pixel == 32) {
+                    *((uint32_t*)(fbp + loc)) = p;
+                } else if (vinfo.bits_per_pixel == 16) {
+                    // Convert 32-bit ARGB to 16-bit RGB565
+                    uint8_t r = (p >> 16) & 0xFF;
+                    uint8_t g = (p >> 8) & 0xFF;
+                    uint8_t b = p & 0xFF;
+                    *((uint16_t*)(fbp + loc)) = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+                }
+            }
+            i++;
+        }
+    }
+
+    // 4. Sleep forever to keep the image on screen
+    while (1) {
+        pause();
     }
 
     munmap(fbp, screensize);

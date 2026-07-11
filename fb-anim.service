@@ -9,4 +9,4 @@ ExecStart=/usr/bin/fb_anim
 Restart=always
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=sysinit.target
